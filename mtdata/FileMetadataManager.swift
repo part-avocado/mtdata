@@ -11,7 +11,7 @@ import AppKit
 class FileMetadataManager {
     static let shared = FileMetadataManager()
     
-    private let mtdataVersion = "1.0"
+    private let mtdataVersion = "2.0"
     private let customFieldsKey = "com.mtdata.customfields"
     private let editedByKey = "com.mtdata.editedby"
     private let versionKey = "com.mtdata.version"
@@ -174,6 +174,105 @@ class FileMetadataManager {
     func removeExtendedAttribute(url: URL, key: String) {
         let path = url.path
         removexattr(path, key, 0)
+    }
+    
+    // MARK: - System Metadata Management
+    
+    func readAllExtendedAttributes(from url: URL) -> [String: String] {
+        var allAttrs: [String: String] = [:]
+        let path = url.path
+        let bufferSize = listxattr(path, nil, 0, 0)
+        
+        if bufferSize > 0 {
+            var buffer = [CChar](repeating: 0, count: bufferSize)
+            listxattr(path, &buffer, bufferSize, 0)
+            
+            let attributeNames = String(cString: buffer).components(separatedBy: "\0").filter { !$0.isEmpty }
+            for attrName in attributeNames {
+                if let value = readExtendedAttribute(url: url, key: attrName) {
+                    allAttrs[attrName] = String(data: value, encoding: .utf8) ?? "<binary data>"
+                }
+            }
+        }
+        
+        return allAttrs
+    }
+    
+    func readFinderTags(from url: URL) -> [String] {
+        if let tags = try? url.resourceValues(forKeys: [.tagNamesKey]).tagNames {
+            return tags
+        }
+        return []
+    }
+    
+    func readQuarantineInfo(from url: URL) -> QuarantineInfo? {
+        guard let quarantineData = readExtendedAttribute(url: url, key: "com.apple.quarantine"),
+              let quarantineString = String(data: quarantineData, encoding: .utf8) else {
+            return nil
+        }
+        
+        // Quarantine format: flags;timestamp;agent;UUID or URL
+        let components = quarantineString.components(separatedBy: ";")
+        var info = QuarantineInfo()
+        
+        if components.count > 0 {
+            info.flags = components[0]
+        }
+        if components.count > 1, let timestamp = TimeInterval(components[1]) {
+            info.timestamp = Date(timeIntervalSinceReferenceDate: timestamp)
+        }
+        if components.count > 2 {
+            info.agentName = components[2]
+        }
+        if components.count > 3 {
+            info.downloadedFrom = components[3]
+        }
+        
+        return info
+    }
+    
+    func readWhereFromURLs(from url: URL) -> [String]? {
+        guard let whereFromData = readExtendedAttribute(url: url, key: "com.apple.metadata:kMDItemWhereFroms") else {
+            return nil
+        }
+        
+        // This is a binary plist
+        do {
+            if let plist = try PropertyListSerialization.propertyList(from: whereFromData, format: nil) as? [String] {
+                return plist.filter { !$0.isEmpty }
+            }
+        } catch {
+            // Try as string
+            if let string = String(data: whereFromData, encoding: .utf8) {
+                return [string]
+            }
+        }
+        return nil
+    }
+    
+    func removeQuarantineAttribute(from url: URL) -> Result<Void, Error> {
+        removeExtendedAttribute(url: url, key: "com.apple.quarantine")
+        return .success(())
+    }
+    
+    func updateFinderTags(url: URL, tags: [String]) -> Result<Void, Error> {
+        var mutableURL = url
+        var resourceValues = URLResourceValues()
+        resourceValues.tagNames = tags
+        
+        do {
+            try mutableURL.setResourceValues(resourceValues)
+            return .success(())
+        } catch {
+            return .failure(error)
+        }
+    }
+    
+    func updateFinderComment(url: URL, comment: String) -> Result<Void, Error> {
+        // Finder comments are stored in the extended attribute
+        let data = comment.data(using: .utf8) ?? Data()
+        writeExtendedAttribute(url: url, key: "com.apple.metadata:kMDItemFinderComment", value: data)
+        return .success(())
     }
     
     // MARK: - Remove All Metadata

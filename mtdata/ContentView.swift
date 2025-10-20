@@ -235,107 +235,47 @@ struct ContentView: View {
             }
             
             if showExtendedMetadata, let extended = viewModel.metadata?.extendedMetadata {
-                GroupBox {
-                    VStack(spacing: 8) {
-                        // PDF Metadata
-                        if extended.pdfPageCount != nil || extended.pdfAuthor != nil {
-                            Text("PDF Information")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .foregroundColor(.secondary)
-                            
-                            if let pageCount = extended.pdfPageCount {
-                                metadataRow(label: "Pages:", value: "\(pageCount)")
-                            }
-                            if let version = extended.pdfVersion {
-                                metadataRow(label: "PDF Version:", value: version)
-                            }
-                            if let author = extended.pdfAuthor {
-                                metadataRow(label: "Author:", value: author)
-                            }
-                            if let title = extended.pdfTitle {
-                                metadataRow(label: "Title:", value: title)
-                            }
-                            if let subject = extended.pdfSubject {
-                                metadataRow(label: "Subject:", value: subject)
-                            }
-                        }
-                        
-                        // EXIF Data
-                        if extended.exifCameraMake != nil || extended.exifImageWidth != nil {
-                            Divider()
-                            Text("Image Information")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .foregroundColor(.secondary)
-                            
-                            if let width = extended.exifImageWidth, let height = extended.exifImageHeight {
-                                metadataRow(label: "Dimensions:", value: "\(width) × \(height)")
-                            }
-                            if let make = extended.exifCameraMake {
-                                metadataRow(label: "Camera Make:", value: make)
-                            }
-                            if let model = extended.exifCameraModel {
-                                metadataRow(label: "Camera Model:", value: model)
-                            }
-                            if let lens = extended.exifLensModel {
-                                metadataRow(label: "Lens:", value: lens)
-                            }
-                            if let focal = extended.exifFocalLength {
-                                metadataRow(label: "Focal Length:", value: focal)
-                            }
-                            if let aperture = extended.exifAperture {
-                                metadataRow(label: "Aperture:", value: aperture)
-                            }
-                            if let iso = extended.exifISO {
-                                metadataRow(label: "ISO:", value: iso)
-                            }
-                            if let shutter = extended.exifShutterSpeed {
-                                metadataRow(label: "Shutter Speed:", value: shutter)
-                            }
-                            if let lat = extended.exifGPSLatitude, let lon = extended.exifGPSLongitude {
-                                metadataRow(label: "GPS:", value: "\(lat), \(lon)")
-                            }
-                        }
-                        
-                        // Audio/Video Data
-                        if extended.duration != nil || extended.artist != nil {
-                            Divider()
-                            Text("Audio/Video Information")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .foregroundColor(.secondary)
-                            
-                            if let duration = extended.duration {
-                                metadataRow(label: "Duration:", value: formatDuration(duration))
-                            }
-                            if let width = extended.videoWidth, let height = extended.videoHeight {
-                                metadataRow(label: "Resolution:", value: "\(width) × \(height)")
-                            }
-                            if let frameRate = extended.frameRate {
-                                metadataRow(label: "Frame Rate:", value: frameRate)
-                            }
-                            if let codec = extended.codec {
-                                metadataRow(label: "Codec:", value: codec)
-                            }
-                            if let bitrate = extended.bitrate {
-                                metadataRow(label: "Bitrate:", value: bitrate)
-                            }
-                            if let artist = extended.artist {
-                                metadataRow(label: "Artist:", value: artist)
-                            }
-                            if let album = extended.album {
-                                metadataRow(label: "Album:", value: album)
-                            }
-                            if let track = extended.trackNumber {
-                                metadataRow(label: "Track:", value: "\(track)")
-                            }
-                        }
-                    }
-                    .padding(8)
+                // System & Extended Attributes
+                systemAttributesView(extended: extended)
+                
+                // PDF Metadata
+                if extended.pdfPageCount != nil || extended.pdfAuthor != nil {
+                    pdfMetadataView(extended: extended)
+                }
+                
+                // Image Metadata
+                if extended.exifCameraMake != nil || extended.exifImageWidth != nil || extended.iptcKeywords != nil {
+                    imageMetadataView(extended: extended)
+                }
+                
+                // Audio Metadata
+                if extended.duration != nil && extended.artist != nil {
+                    audioMetadataView(extended: extended)
+                }
+                
+                // Video Metadata
+                if extended.videoWidth != nil || extended.subtitleTrackCount != nil {
+                    videoMetadataView(extended: extended)
+                }
+                
+                // Document Metadata (Office, ePub)
+                if extended.officeTitle != nil || extended.epubTitle != nil {
+                    documentMetadataView(extended: extended)
+                }
+                
+                // Text File Metadata
+                if extended.textEncoding != nil {
+                    textFileMetadataView(extended: extended)
+                }
+                
+                // Archive Metadata
+                if extended.archiveFileCount != nil {
+                    archiveMetadataView(extended: extended)
+                }
+                
+                // Executable Metadata
+                if extended.executableType != nil {
+                    executableMetadataView(extended: extended)
                 }
             }
         }
@@ -563,6 +503,489 @@ struct ContentView: View {
             return String(format: "%d:%02d:%02d", hours, minutes, seconds)
         } else {
             return String(format: "%d:%02d", minutes, seconds)
+        }
+    }
+    
+    // MARK: - Extended Metadata Views
+    
+    @ViewBuilder
+    private func systemAttributesView(extended: MTDataExtendedMetadata) -> some View {
+        if extended.quarantineInfo != nil || extended.whereFromURLs != nil || extended.finderTags != nil {
+            GroupBox {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("System & Extended Attributes")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                    
+                    if let quarantine = extended.quarantineInfo {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Quarantine Status:")
+                                    .fontWeight(.medium)
+                                if let agent = quarantine.agentName {
+                                    Text("Downloaded via: \(agent)")
+                                        .font(.caption)
+                                }
+                                if let timestamp = quarantine.timestamp {
+                                    Text("Date: \(formatDate(timestamp))")
+                                        .font(.caption)
+                                }
+                            }
+                            Spacer()
+                            Button("Remove Quarantine") {
+                                removeQuarantine()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    
+                    if let whereFromURLs = extended.whereFromURLs, !whereFromURLs.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Downloaded From:")
+                                .fontWeight(.medium)
+                            ForEach(whereFromURLs, id: \.self) { url in
+                                Text(url)
+                                    .font(.caption)
+                                    .textSelection(.enabled)
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
+                    
+                    if let tags = extended.finderTags, !tags.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Finder Tags:")
+                                .fontWeight(.medium)
+                            HStack {
+                                ForEach(tags, id: \.self) { tag in
+                                    Text(tag)
+                                        .font(.caption)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 2)
+                                        .background(Color.secondary.opacity(0.2))
+                                        .cornerRadius(4)
+                                }
+                            }
+                        }
+                    }
+                    
+                    if let comment = extended.spotlightComment {
+                        metadataRow(label: "Spotlight Comment:", value: comment)
+                    }
+                }
+                .padding(8)
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private func pdfMetadataView(extended: MTDataExtendedMetadata) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("PDF Information")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                
+                if let pageCount = extended.pdfPageCount {
+                    metadataRow(label: "Pages:", value: "\(pageCount)")
+                }
+                if let version = extended.pdfVersion {
+                    metadataRow(label: "PDF Version:", value: version)
+                }
+                if let encrypted = extended.pdfEncrypted {
+                    metadataRow(label: "Encrypted:", value: encrypted ? "Yes" : "No")
+                }
+                if let title = extended.pdfTitle {
+                    metadataRow(label: "Title:", value: title)
+                }
+                if let author = extended.pdfAuthor {
+                    metadataRow(label: "Author:", value: author)
+                }
+                if let subject = extended.pdfSubject {
+                    metadataRow(label: "Subject:", value: subject)
+                }
+                if let producer = extended.pdfProducer {
+                    metadataRow(label: "Producer:", value: producer)
+                }
+                if let created = extended.pdfCreationDate {
+                    metadataRow(label: "Created:", value: formatDate(created))
+                }
+            }
+            .padding(8)
+        }
+    }
+    
+    @ViewBuilder
+    private func imageMetadataView(extended: MTDataExtendedMetadata) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Image Information")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                
+                // Dimensions
+                if let width = extended.exifImageWidth, let height = extended.exifImageHeight {
+                    metadataRow(label: "Dimensions:", value: "\(width) × \(height)")
+                }
+                if let orientation = extended.exifOrientation {
+                    metadataRow(label: "Orientation:", value: orientation)
+                }
+                
+                // Camera
+                if let make = extended.exifCameraMake {
+                    metadataRow(label: "Camera Make:", value: make)
+                }
+                if let model = extended.exifCameraModel {
+                    metadataRow(label: "Camera Model:", value: model)
+                }
+                if let lens = extended.exifLensModel {
+                    metadataRow(label: "Lens:", value: lens)
+                }
+                if let serial = extended.exifSerialNumber {
+                    metadataRow(label: "Serial Number:", value: serial)
+                }
+                
+                // Settings
+                if let focal = extended.exifFocalLength {
+                    metadataRow(label: "Focal Length:", value: focal)
+                }
+                if let aperture = extended.exifAperture {
+                    metadataRow(label: "Aperture:", value: aperture)
+                }
+                if let iso = extended.exifISO {
+                    metadataRow(label: "ISO:", value: iso)
+                }
+                if let shutter = extended.exifShutterSpeed {
+                    metadataRow(label: "Shutter Speed:", value: shutter)
+                }
+                if let expComp = extended.exifExposureCompensation {
+                    metadataRow(label: "Exposure Comp.:", value: expComp)
+                }
+                if let wb = extended.exifWhiteBalance {
+                    metadataRow(label: "White Balance:", value: wb)
+                }
+                if let metering = extended.exifMeteringMode {
+                    metadataRow(label: "Metering:", value: metering)
+                }
+                if let dateTaken = extended.exifDateTaken {
+                    metadataRow(label: "Date Taken:", value: formatDate(dateTaken))
+                }
+                
+                // GPS
+                if let lat = extended.exifGPSLatitude {
+                    metadataRow(label: "GPS Latitude:", value: lat)
+                }
+                if let lon = extended.exifGPSLongitude {
+                    metadataRow(label: "GPS Longitude:", value: lon)
+                }
+                if let alt = extended.exifGPSAltitude {
+                    metadataRow(label: "GPS Altitude:", value: alt)
+                }
+                
+                // IPTC
+                if let keywords = extended.iptcKeywords, !keywords.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Keywords:")
+                            .fontWeight(.medium)
+                        Text(keywords.joined(separator: ", "))
+                            .font(.caption)
+                    }
+                }
+                if let caption = extended.iptcCaption {
+                    metadataRow(label: "Caption:", value: caption)
+                }
+                if let credit = extended.iptcCredit {
+                    metadataRow(label: "Credit:", value: credit)
+                }
+                if let copyright = extended.iptcCopyright {
+                    metadataRow(label: "Copyright:", value: copyright)
+                }
+                
+                // XMP
+                if let rating = extended.xmpRating {
+                    metadataRow(label: "Rating:", value: "\(rating) stars")
+                }
+                if let creator = extended.xmpCreatorTool {
+                    metadataRow(label: "Creator Tool:", value: creator)
+                }
+                
+                // PNG
+                if let software = extended.pngSoftware {
+                    metadataRow(label: "Software:", value: software)
+                }
+                
+                // HEIC
+                if let livePhotoID = extended.heicLivePhotoID {
+                    metadataRow(label: "Live Photo ID:", value: livePhotoID)
+                }
+            }
+            .padding(8)
+        }
+    }
+    
+    @ViewBuilder
+    private func audioMetadataView(extended: MTDataExtendedMetadata) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Audio Information")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                
+                if let title = extended.title {
+                    metadataRow(label: "Title:", value: title)
+                }
+                if let artist = extended.artist {
+                    metadataRow(label: "Artist:", value: artist)
+                }
+                if let album = extended.album {
+                    metadataRow(label: "Album:", value: album)
+                }
+                if let composer = extended.composer {
+                    metadataRow(label: "Composer:", value: composer)
+                }
+                if let trackNumber = extended.trackNumber {
+                    metadataRow(label: "Track Number:", value: "\(trackNumber)")
+                }
+                if let year = extended.year {
+                    metadataRow(label: "Year:", value: year)
+                }
+                if let genre = extended.genre {
+                    metadataRow(label: "Genre:", value: genre)
+                }
+                if let comment = extended.comment {
+                    metadataRow(label: "Comment:", value: comment)
+                }
+                if let duration = extended.duration {
+                    metadataRow(label: "Duration:", value: formatDuration(duration))
+                }
+                if let bitrate = extended.bitrate {
+                    metadataRow(label: "Bitrate:", value: bitrate)
+                }
+                if let codec = extended.codec {
+                    metadataRow(label: "Codec:", value: codec)
+                }
+                if let albumArt = extended.albumArtPresent, albumArt {
+                    metadataRow(label: "Album Art:", value: "Present")
+                }
+            }
+            .padding(8)
+        }
+    }
+    
+    @ViewBuilder
+    private func videoMetadataView(extended: MTDataExtendedMetadata) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Video Information")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                
+                if let title = extended.title {
+                    metadataRow(label: "Title:", value: title)
+                }
+                if let width = extended.videoWidth, let height = extended.videoHeight {
+                    metadataRow(label: "Resolution:", value: "\(width) × \(height)")
+                }
+                if let frameRate = extended.frameRate {
+                    metadataRow(label: "Frame Rate:", value: frameRate)
+                }
+                if let videoCodec = extended.videoCodec {
+                    metadataRow(label: "Video Codec:", value: videoCodec)
+                }
+                if let audioCodec = extended.audioCodec {
+                    metadataRow(label: "Audio Codec:", value: audioCodec)
+                }
+                if let container = extended.containerFormat {
+                    metadataRow(label: "Container:", value: container)
+                }
+                if let duration = extended.duration {
+                    metadataRow(label: "Duration:", value: formatDuration(duration))
+                }
+                if let bitrate = extended.bitrate {
+                    metadataRow(label: "Bitrate:", value: bitrate)
+                }
+                if let audioCount = extended.audioTrackCount, audioCount > 0 {
+                    metadataRow(label: "Audio Tracks:", value: "\(audioCount)")
+                    if let languages = extended.audioLanguages, !languages.isEmpty {
+                        metadataRow(label: "Audio Languages:", value: languages.joined(separator: ", "))
+                    }
+                }
+                if let subCount = extended.subtitleTrackCount, subCount > 0 {
+                    metadataRow(label: "Subtitle Tracks:", value: "\(subCount)")
+                    if let languages = extended.subtitleLanguages, !languages.isEmpty {
+                        metadataRow(label: "Subtitle Languages:", value: languages.joined(separator: ", "))
+                    }
+                }
+                if let created = extended.videoCreationDate {
+                    metadataRow(label: "Created:", value: formatDate(created))
+                }
+                if let location = extended.videoLocation {
+                    metadataRow(label: "Location:", value: location)
+                }
+            }
+            .padding(8)
+        }
+    }
+    
+    @ViewBuilder
+    private func documentMetadataView(extended: MTDataExtendedMetadata) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Document Information")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                
+                // Office documents
+                if let title = extended.officeTitle {
+                    metadataRow(label: "Title:", value: title)
+                }
+                if let subject = extended.officeSubject {
+                    metadataRow(label: "Subject:", value: subject)
+                }
+                if let creator = extended.officeCreator {
+                    metadataRow(label: "Creator:", value: creator)
+                }
+                if let lastModBy = extended.officeLastModifiedBy {
+                    metadataRow(label: "Last Modified By:", value: lastModBy)
+                }
+                if let created = extended.officeCreated {
+                    metadataRow(label: "Created:", value: formatDate(created))
+                }
+                if let modified = extended.officeModified {
+                    metadataRow(label: "Modified:", value: formatDate(modified))
+                }
+                if let revision = extended.officeRevision {
+                    metadataRow(label: "Revision:", value: revision)
+                }
+                if let app = extended.officeApplication {
+                    metadataRow(label: "Application:", value: app)
+                }
+                
+                // ePub documents
+                if let title = extended.epubTitle {
+                    metadataRow(label: "Title:", value: title)
+                }
+                if let creator = extended.epubCreator {
+                    metadataRow(label: "Creator:", value: creator)
+                }
+                if let language = extended.epubLanguage {
+                    metadataRow(label: "Language:", value: language)
+                }
+                if let publisher = extended.epubPublisher {
+                    metadataRow(label: "Publisher:", value: publisher)
+                }
+                if let identifier = extended.epubIdentifier {
+                    metadataRow(label: "Identifier:", value: identifier)
+                }
+            }
+            .padding(8)
+        }
+    }
+    
+    @ViewBuilder
+    private func textFileMetadataView(extended: MTDataExtendedMetadata) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Text File Properties")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                
+                if let encoding = extended.textEncoding {
+                    metadataRow(label: "Encoding:", value: encoding)
+                }
+                if let bom = extended.textBOMPresent, bom {
+                    metadataRow(label: "BOM:", value: "Present")
+                }
+                if let lineEndings = extended.textLineEndings {
+                    metadataRow(label: "Line Endings:", value: lineEndings)
+                }
+                if let frontMatter = extended.textFrontMatter, !frontMatter.isEmpty {
+                    Divider()
+                    Text("Front Matter")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                    ForEach(frontMatter.sorted(by: { $0.key < $1.key }), id: \.key) { key, value in
+                        metadataRow(label: "\(key):", value: value)
+                    }
+                }
+            }
+            .padding(8)
+        }
+    }
+    
+    @ViewBuilder
+    private func archiveMetadataView(extended: MTDataExtendedMetadata) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Archive Information")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                
+                if let format = extended.archiveFormat {
+                    metadataRow(label: "Format:", value: format)
+                }
+                if let fileCount = extended.archiveFileCount {
+                    metadataRow(label: "Files:", value: "\(fileCount)")
+                }
+                if let totalSize = extended.archiveTotalSize {
+                    metadataRow(label: "Total Size:", value: formatFileSize(totalSize))
+                }
+                if let compression = extended.archiveCompressionMethod {
+                    metadataRow(label: "Compression:", value: compression)
+                }
+            }
+            .padding(8)
+        }
+    }
+    
+    @ViewBuilder
+    private func executableMetadataView(extended: MTDataExtendedMetadata) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Executable Information")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+                
+                if let type = extended.executableType {
+                    metadataRow(label: "Type:", value: type)
+                }
+                if let archs = extended.executableArchitectures, !archs.isEmpty {
+                    metadataRow(label: "Architectures:", value: archs.joined(separator: ", "))
+                }
+                if let signed = extended.executableCodeSigned {
+                    metadataRow(label: "Code Signed:", value: signed ? "Yes" : "No")
+                }
+                if let minOS = extended.executableMinimumOS {
+                    metadataRow(label: "Minimum OS:", value: minOS)
+                }
+            }
+            .padding(8)
+        }
+    }
+    
+    private func removeQuarantine() {
+        guard let url = viewModel.metadata?.url else { return }
+        let result = FileMetadataManager.shared.removeQuarantineAttribute(from: url)
+        
+        switch result {
+        case .success:
+            alertMessage = "Quarantine flag removed successfully!"
+            showingAlert = true
+            viewModel.reloadMetadata()
+        case .failure(let error):
+            alertMessage = "Error removing quarantine: \(error.localizedDescription)"
+            showingAlert = true
         }
     }
 }
