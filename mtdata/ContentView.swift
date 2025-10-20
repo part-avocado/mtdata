@@ -1101,7 +1101,11 @@ class MetadataViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var isLoadingExtendedMetadata = false
     @Published var extendedMetadataLoaded = false
-    private let manager = FileMetadataManager.shared
+    private lazy var manager = FileMetadataManager.shared
+    
+    init() {
+        // Empty initializer - don't access manager here to avoid blocking
+    }
     
     var hasUnsavedChanges: Bool {
         guard let current = metadata, let original = originalMetadata else { return false }

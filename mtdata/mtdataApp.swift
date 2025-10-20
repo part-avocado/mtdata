@@ -18,29 +18,23 @@ struct mtdataApp: App {
         .commands {
             CommandGroup(replacing: .newItem) { }
         }
+        .defaultSize(width: 800, height: 600)
     }
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Ensure the app activates and comes to the front
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        
-        // Make sure the main window is visible - try multiple times with delay
+        // Simple activation - don't block the main thread
         DispatchQueue.main.async {
-            if let window = NSApp.windows.first {
-                window.makeKeyAndOrderFront(nil)
-                window.orderFrontRegardless()
-            }
-        }
-        
-        // Backup: try again after a short delay to ensure window is created
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            if let window = NSApp.windows.first {
-                window.makeKeyAndOrderFront(nil)
-                window.orderFrontRegardless()
-                NSApp.activate(ignoringOtherApps: true)
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            
+            // Show window after a brief delay to ensure it's created
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                if let window = NSApp.windows.first {
+                    window.center()
+                    window.makeKeyAndOrderFront(nil)
+                }
             }
         }
     }
