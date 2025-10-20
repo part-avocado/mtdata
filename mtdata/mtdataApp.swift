@@ -10,8 +10,11 @@ import SwiftUI
 @main
 struct mtdataApp: App {
     var body: some Scene {
-        DocumentGroup(newDocument: mtdataDocument()) { file in
-            ContentView(document: file.$document)
+        WindowGroup {
+            ContentView()
+        }
+        .commands {
+            CommandGroup(replacing: .newItem) { }
         }
     }
 }
