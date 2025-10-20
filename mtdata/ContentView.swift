@@ -23,7 +23,10 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if viewModel.metadata == nil {
+            if viewModel.isLoading {
+                // Loading state
+                loadingView
+            } else if viewModel.metadata == nil {
                 // File picker state
                 filePickerView
             } else {
@@ -33,7 +36,7 @@ struct ContentView: View {
         }
         .frame(minWidth: 600, minHeight: 500)
         .alert("MTData", isPresented: $showingAlert) {
-            Button("OK") { }
+            Button("Done") { }
         } message: {
             Text(alertMessage)
         }
@@ -45,6 +48,28 @@ struct ContentView: View {
         } message: {
             Text("This will remove all MTData tracking information and custom fields. This action cannot be undone.")
         }
+    }
+    
+    private var loadingView: some View {
+        VStack(spacing: 20) {
+            Spacer()
+            
+            ProgressView()
+                .scaleEffect(1.5)
+                .padding()
+            
+            Text("Loading metadata...")
+                .font(.headline)
+                .foregroundColor(.secondary)
+            
+            Text("Analyzing file and extracting metadata")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(NSColor.controlBackgroundColor))
     }
     
     private var filePickerView: some View {
@@ -995,6 +1020,7 @@ struct ContentView: View {
 class MetadataViewModel: ObservableObject {
     @Published var metadata: FileMetadata?
     @Published var originalMetadata: FileMetadata?
+    @Published var isLoading = false
     private let manager = FileMetadataManager.shared
     
     var hasUnsavedChanges: Bool {
@@ -1034,8 +1060,19 @@ class MetadataViewModel: ObservableObject {
     }
     
     func loadFile(url: URL) {
-        metadata = manager.readMetadata(from: url)
-        originalMetadata = metadata // Store original for comparison
+        isLoading = true
+        
+        // Load metadata on background thread to avoid blocking UI
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let loadedMetadata = self?.manager.readMetadata(from: url)
+            
+            // Update UI on main thread
+            DispatchQueue.main.async {
+                self?.metadata = loadedMetadata
+                self?.originalMetadata = loadedMetadata
+                self?.isLoading = false
+            }
+        }
     }
     
     func saveMetadata() -> Result<Void, Error> {
@@ -1051,7 +1088,18 @@ class MetadataViewModel: ObservableObject {
     
     func reloadMetadata() {
         guard let url = metadata?.url else { return }
-        loadFile(url: url)
+        isLoading = true
+        
+        // Reload on background thread
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let loadedMetadata = self?.manager.readMetadata(from: url)
+            
+            DispatchQueue.main.async {
+                self?.metadata = loadedMetadata
+                self?.originalMetadata = loadedMetadata
+                self?.isLoading = false
+            }
+        }
     }
     
     func removeAllMetadata() -> Result<Void, Error> {
