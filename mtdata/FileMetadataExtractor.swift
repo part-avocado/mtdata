@@ -211,10 +211,9 @@ class FileMetadataExtractor {
             }
             
             // Extract PDF version if available
-            if let version = pdfDocument.majorVersion {
-                let minor = pdfDocument.minorVersion
-                metadata.pdfVersion = "\(version).\(minor)"
-            }
+            let version = pdfDocument.majorVersion
+            let minor = pdfDocument.minorVersion
+            metadata.pdfVersion = "\(version).\(minor)"
         }
     }
     
@@ -316,8 +315,8 @@ class FileMetadataExtractor {
             metadata.iptcByline = iptc[kCGImagePropertyIPTCByline as String] as? String
         }
         
-        // XMP data
-        if let xmp = properties[kCGImagePropertyXMPDictionary as String] as? [String: Any] {
+        // XMP data - using string key as kCGImagePropertyXMPDictionary is not available
+        if let xmp = properties["{XMP}" as String] as? [String: Any] {
             // XMP rating is often stored as a string
             if let ratingString = xmp["xmp:Rating"] as? String, let rating = Int(ratingString) {
                 metadata.xmpRating = rating
