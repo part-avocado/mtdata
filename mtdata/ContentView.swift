@@ -258,10 +258,6 @@ struct ContentView: View {
                 
                 Button(action: { 
                     showExtendedMetadata.toggle()
-                    // Load extended metadata when section is expanded
-                    if showExtendedMetadata && !viewModel.extendedMetadataLoaded {
-                        viewModel.loadExtendedMetadata()
-                    }
                 }) {
                     Image(systemName: showExtendedMetadata ? "chevron.up" : "chevron.down")
                 }
@@ -328,22 +324,15 @@ struct ContentView: View {
                     executableMetadataView(extended: extended)
                 }
                 } else if !viewModel.extendedMetadataLoaded {
-                    // Not loaded yet - show prompt to load
+                    // Not loaded yet - will auto-load
                     GroupBox {
                         HStack {
                             Spacer()
                             VStack(spacing: 8) {
-                                Image(systemName: "doc.text.magnifyingglass")
-                                    .font(.largeTitle)
-                                    .foregroundColor(.secondary)
-                                Text("Extended metadata not loaded")
+                                ProgressView()
+                                Text("Extended metadata will load automatically...")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
-                                Button("Load Extended Metadata") {
-                                    viewModel.loadExtendedMetadata()
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
                             }
                             .padding()
                             Spacer()
@@ -592,25 +581,17 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                     
                     if let quarantine = extended.quarantineInfo {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Quarantine Status:")
-                                    .fontWeight(.medium)
-                                if let agent = quarantine.agentName {
-                                    Text("Downloaded via: \(agent)")
-                                        .font(.caption)
-                                }
-                                if let timestamp = quarantine.timestamp {
-                                    Text("Date: \(formatDate(timestamp))")
-                                        .font(.caption)
-                                }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Quarantine Status:")
+                                .fontWeight(.medium)
+                            if let agent = quarantine.agentName {
+                                Text("Downloaded via: \(agent)")
+                                    .font(.caption)
                             }
-                            Spacer()
-                            Button("Remove Quarantine") {
-                                removeQuarantine()
+                            if let timestamp = quarantine.timestamp {
+                                Text("Date: \(formatDate(timestamp))")
+                                    .font(.caption)
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
                         }
                         .padding(.vertical, 4)
                     }
@@ -619,11 +600,34 @@ struct ContentView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Downloaded From:")
                                 .fontWeight(.medium)
-                            ForEach(whereFromURLs, id: \.self) { url in
-                                Text(url)
-                                    .font(.caption)
-                                    .textSelection(.enabled)
-                                    .foregroundColor(.blue)
+                            ForEach(Array(whereFromURLs.enumerated()), id: \.offset) { index, url in
+                                HStack(spacing: 8) {
+                                    Text(abridgeURL(url))
+                                        .font(.caption)
+                                        .foregroundColor(.blue)
+                                        .textSelection(.enabled)
+                                        .lineLimit(1)
+                                    
+                                    Button(action: {
+                                        NSPasteboard.general.clearContents()
+                                        NSPasteboard.general.setString(url, forType: .string)
+                                    }) {
+                                        Image(systemName: "doc.on.doc")
+                                            .font(.caption)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Copy URL")
+                                    
+                                    Button(action: {
+                                        removeWhereFromURL(at: index)
+                                    }) {
+                                        Image(systemName: "trash")
+                                            .font(.caption)
+                                            .foregroundColor(.red)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Remove this URL")
+                                }
                             }
                         }
                     }
@@ -1047,17 +1051,43 @@ struct ContentView: View {
         }
     }
     
-    private func removeQuarantine() {
-        guard let url = viewModel.metadata?.url else { return }
-        let result = FileMetadataManager.shared.removeQuarantineAttribute(from: url)
+    private func abridgeURL(_ urlString: String) -> String {
+        guard let url = URL(string: urlString) else { return urlString }
+        
+        // Extract host and path
+        if let host = url.host {
+            let path = url.path
+            if path.isEmpty || path == "/" {
+                return host
+            }
+            return "\(host)\(path)"
+        }
+        
+        return urlString
+    }
+    
+    private func removeWhereFromURL(at index: Int) {
+        guard let url = viewModel.metadata?.url,
+              var whereFromURLs = viewModel.metadata?.extendedMetadata.whereFromURLs else {
+            return
+        }
+        
+        guard index < whereFromURLs.count else { return }
+        whereFromURLs.remove(at: index)
+        
+        // Update the metadata
+        viewModel.metadata?.extendedMetadata.whereFromURLs = whereFromURLs.isEmpty ? nil : whereFromURLs
+        
+        // Save to file system
+        let result = FileMetadataManager.shared.updateWhereFromURLs(url: url, urls: whereFromURLs)
         
         switch result {
         case .success:
-            alertMessage = "Quarantine flag removed successfully!"
+            alertMessage = "Download source removed successfully!"
             showingAlert = true
             viewModel.reloadMetadata()
         case .failure(let error):
-            alertMessage = "Error removing quarantine: \(error.localizedDescription)"
+            alertMessage = "Error removing download source: \(error.localizedDescription)"
             showingAlert = true
         }
     }
@@ -1123,6 +1153,12 @@ class MetadataViewModel: ObservableObject {
                     self?.metadata = loadedMetadata
                     self?.originalMetadata = loadedMetadata
                     self?.isLoading = false
+                    
+                    // Automatically load extended metadata after basic metadata is displayed
+                    // Small delay to ensure UI is responsive first
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        self?.loadExtendedMetadata()
+                    }
                 }
             } else {
                 DispatchQueue.main.async {

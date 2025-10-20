@@ -290,6 +290,23 @@ class FileMetadataManager {
         return .success(())
     }
     
+    func updateWhereFromURLs(url: URL, urls: [String]) -> Result<Void, Error> {
+        if urls.isEmpty {
+            // Remove the attribute entirely if no URLs
+            removeExtendedAttribute(url: url, key: "com.apple.metadata:kMDItemWhereFroms")
+            return .success(())
+        }
+        
+        // Encode as binary plist
+        do {
+            let data = try PropertyListSerialization.data(fromPropertyList: urls, format: .binary, options: 0)
+            writeExtendedAttribute(url: url, key: "com.apple.metadata:kMDItemWhereFroms", value: data)
+            return .success(())
+        } catch {
+            return .failure(error)
+        }
+    }
+    
     // MARK: - Remove All Metadata
     
     func removeAllMTDataMetadata(from url: URL) -> Result<Void, Error> {
