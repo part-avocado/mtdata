@@ -17,9 +17,13 @@ class FileMetadataManager {
     private let versionKey = "com.mtdata.version"
     private let lastEditKey = "com.mtdata.lastedit"
     
+    private init() {
+        // Private initializer for singleton
+    }
+    
     // MARK: - Read Metadata
     
-    func readMetadata(from url: URL) -> FileMetadata? {
+    func readMetadata(from url: URL, includeExtendedMetadata: Bool = false) -> FileMetadata? {
         var metadata = FileMetadata(url: url)
         
         do {
@@ -36,7 +40,10 @@ class FileMetadataManager {
             metadata.modificationDate = resourceValues.contentModificationDate
             metadata.size = Int64(resourceValues.fileSize ?? 0)
             metadata.fileType = resourceValues.typeIdentifier ?? "Unknown"
-            metadata.icon = NSWorkspace.shared.icon(forFile: url.path)
+            
+            // Icon must be loaded on main thread as NSWorkspace/NSImage are not thread-safe
+            // We'll load it separately after returning
+            metadata.icon = nil
             
             // Get permissions
             if let posixPermissions = attributes[.posixPermissions] as? NSNumber {
@@ -58,14 +65,22 @@ class FileMetadataManager {
             // Read custom fields
             metadata.customFields = readCustomFields(from: url)
             
-            // Extract extended metadata (PDF, EXIF, etc.)
-            metadata.extendedMetadata = FileMetadataExtractor.extractExtendedMetadata(from: url)
+            // Extract extended metadata only if requested (lazy loading)
+            if includeExtendedMetadata {
+                metadata.extendedMetadata = FileMetadataExtractor.extractExtendedMetadata(from: url)
+            }
             
             return metadata
         } catch {
             print("Error reading metadata: \(error)")
             return nil
         }
+    }
+    
+    // MARK: - Load Extended Metadata Separately
+    
+    func loadExtendedMetadata(for url: URL) -> MTDataExtendedMetadata {
+        return FileMetadataExtractor.extractExtendedMetadata(from: url)
     }
     
     // MARK: - Write Metadata

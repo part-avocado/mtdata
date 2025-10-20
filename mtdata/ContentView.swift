@@ -58,11 +58,11 @@ struct ContentView: View {
                 .scaleEffect(1.5)
                 .padding()
             
-            Text("Loading metadata...")
+            Text("Loading file...")
                 .font(.headline)
                 .foregroundColor(.secondary)
             
-            Text("Analyzing file and extracting metadata")
+            Text("Reading basic file information")
                 .font(.caption)
                 .foregroundColor(.secondary)
             
@@ -124,12 +124,10 @@ struct ContentView: View {
                     
                     Divider()
                     
-                    // Extended metadata section (if available)
-                    if viewModel.metadata?.extendedMetadata.hasAnyData == true {
-                        extendedMetadataSection
-                        
-                        Divider()
-                    }
+                    // Extended metadata section (always show, load on-demand)
+                    extendedMetadataSection
+                    
+                    Divider()
                     
                     mtdataTrackingSection
                     
@@ -253,13 +251,40 @@ struct ContentView: View {
                 
                 Spacer()
                 
-                Button(action: { showExtendedMetadata.toggle() }) {
+                if viewModel.isLoadingExtendedMetadata {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                }
+                
+                Button(action: { 
+                    showExtendedMetadata.toggle()
+                    // Load extended metadata when section is expanded
+                    if showExtendedMetadata && !viewModel.extendedMetadataLoaded {
+                        viewModel.loadExtendedMetadata()
+                    }
+                }) {
                     Image(systemName: showExtendedMetadata ? "chevron.up" : "chevron.down")
                 }
                 .buttonStyle(.plain)
             }
             
-            if showExtendedMetadata, let extended = viewModel.metadata?.extendedMetadata {
+            if showExtendedMetadata {
+                if viewModel.isLoadingExtendedMetadata {
+                    // Show loading state
+                    GroupBox {
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 8) {
+                                ProgressView()
+                                Text("Loading extended metadata...")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding()
+                            Spacer()
+                        }
+                    }
+                } else if let extended = viewModel.metadata?.extendedMetadata, viewModel.extendedMetadataLoaded {
                 // System & Extended Attributes
                 systemAttributesView(extended: extended)
                 
@@ -301,6 +326,29 @@ struct ContentView: View {
                 // Executable Metadata
                 if extended.executableType != nil {
                     executableMetadataView(extended: extended)
+                }
+                } else if !viewModel.extendedMetadataLoaded {
+                    // Not loaded yet - show prompt to load
+                    GroupBox {
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 8) {
+                                Image(systemName: "doc.text.magnifyingglass")
+                                    .font(.largeTitle)
+                                    .foregroundColor(.secondary)
+                                Text("Extended metadata not loaded")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Button("Load Extended Metadata") {
+                                    viewModel.loadExtendedMetadata()
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+                            .padding()
+                            Spacer()
+                        }
+                    }
                 }
             }
         }
@@ -1021,6 +1069,8 @@ class MetadataViewModel: ObservableObject {
     @Published var metadata: FileMetadata?
     @Published var originalMetadata: FileMetadata?
     @Published var isLoading = false
+    @Published var isLoadingExtendedMetadata = false
+    @Published var extendedMetadataLoaded = false
     private let manager = FileMetadataManager.shared
     
     var hasUnsavedChanges: Bool {
@@ -1061,16 +1111,41 @@ class MetadataViewModel: ObservableObject {
     
     func loadFile(url: URL) {
         isLoading = true
+        extendedMetadataLoaded = false
         
-        // Load metadata on background thread to avoid blocking UI
+        // Load basic metadata quickly (without extended metadata)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let loadedMetadata = self?.manager.readMetadata(from: url)
+            // Fast load: only basic file system attributes and MTData fields
+            if var loadedMetadata = self?.manager.readMetadata(from: url, includeExtendedMetadata: false) {
+                // Load icon on main thread as NSWorkspace/NSImage are not thread-safe
+                DispatchQueue.main.async {
+                    loadedMetadata.icon = NSWorkspace.shared.icon(forFile: url.path)
+                    self?.metadata = loadedMetadata
+                    self?.originalMetadata = loadedMetadata
+                    self?.isLoading = false
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self?.isLoading = false
+                }
+            }
+        }
+    }
+    
+    func loadExtendedMetadata() {
+        guard let url = metadata?.url, !extendedMetadataLoaded, !isLoadingExtendedMetadata else { return }
+        
+        isLoadingExtendedMetadata = true
+        
+        // Load extended metadata on background thread
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let extendedMetadata = self?.manager.loadExtendedMetadata(for: url)
             
-            // Update UI on main thread
             DispatchQueue.main.async {
-                self?.metadata = loadedMetadata
-                self?.originalMetadata = loadedMetadata
-                self?.isLoading = false
+                self?.metadata?.extendedMetadata = extendedMetadata ?? MTDataExtendedMetadata()
+                self?.originalMetadata?.extendedMetadata = extendedMetadata ?? MTDataExtendedMetadata()
+                self?.extendedMetadataLoaded = true
+                self?.isLoadingExtendedMetadata = false
             }
         }
     }
@@ -1090,14 +1165,25 @@ class MetadataViewModel: ObservableObject {
         guard let url = metadata?.url else { return }
         isLoading = true
         
+        // Determine if we should reload extended metadata
+        let shouldLoadExtended = extendedMetadataLoaded
+        extendedMetadataLoaded = false
+        
         // Reload on background thread
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let loadedMetadata = self?.manager.readMetadata(from: url)
-            
-            DispatchQueue.main.async {
-                self?.metadata = loadedMetadata
-                self?.originalMetadata = loadedMetadata
-                self?.isLoading = false
+            if var loadedMetadata = self?.manager.readMetadata(from: url, includeExtendedMetadata: shouldLoadExtended) {
+                // Load icon on main thread as NSWorkspace/NSImage are not thread-safe
+                DispatchQueue.main.async {
+                    loadedMetadata.icon = NSWorkspace.shared.icon(forFile: url.path)
+                    self?.metadata = loadedMetadata
+                    self?.originalMetadata = loadedMetadata
+                    self?.isLoading = false
+                    self?.extendedMetadataLoaded = shouldLoadExtended
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self?.isLoading = false
+                }
             }
         }
     }
